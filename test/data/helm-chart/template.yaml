@@ -2038,3 +2038,58 @@ spec:
         
       restartPolicy: Never
       serviceAccountName: helm-manager
+---
+# Source: redhat-trusted-application-pipeline/templates/uninstall.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "rhtap-installer-uninstall"
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/instance: "installer"
+    app.kubernetes.io/version: 1.1.0
+    helm.sh/chart: "redhat-trusted-application-pipeline-0.1.0"
+  annotations:
+    "helm.sh/hook": pre-delete
+spec:
+  template:
+    metadata:
+      name: "installer-uninstall"
+      labels:
+        app.kubernetes.io/managed-by: "Helm"
+        app.kubernetes.io/instance: "installer"
+        helm.sh/chart: "redhat-trusted-application-pipeline-0.1.0"
+    spec:
+      containers:
+        - name: delete-namespace
+          image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
+          workingDir: /tmp
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -o errexit
+              set -o nounset
+              set -o pipefail
+            
+            
+              NAMESPACE="rhtap"
+              echo -n "* Removing applications: "
+              if kubectl api-resources | grep -q applications; then
+                kubectl get applications -n "$NAMESPACE" --ignore-not-found --output name | xargs --no-run-if-empty kubectl delete -n "$NAMESPACE" --wait
+                echo -n "."
+                while [ "$(kubectl get applications -n "$NAMESPACE" --ignore-not-found --output name | wc -l)" != "0" ]; do
+                  echo "_"
+                  sleep 2
+                done
+              fi
+              echo "OK"
+
+              echo -n "* Removing namespace: "
+              kubectl delete namespace "$NAMESPACE" --ignore-not-found --wait
+              echo "OK"
+              
+              echo
+              echo "Uninstall successful"
+      restartPolicy: Never
+      serviceAccountName: helm-manager

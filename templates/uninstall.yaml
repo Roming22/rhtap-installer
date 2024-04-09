@@ -20,22 +20,37 @@ spec:
         helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
     spec:
       containers:
-        - name: debug-container
+        - name: delete-namespace
           image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
           workingDir: /tmp
           command:
             - /bin/bash
             - -c
             - |
-              DURATION=120
-              FLAG="$PWD/.keep_alive"
-              echo "The container will shutdown in $DURATION seconds."
-              echo "Delete '$FLAG' to force the shutdown."
-              touch "$FLAG"
-              { sleep $DURATION; rm "$FLAG"; } &
-              while [ -e "$FLAG" ]; do
-                sleep 5
-              done
-              echo "Container shutting down"
+              set -o errexit
+              set -o nounset
+              set -o pipefail
+            {{ if eq .Values.debug.script true }}
+              set -x
+            {{ end }}
+            
+              NAMESPACE="{{.Release.Namespace}}"
+              echo -n "* Removing applications: "
+              if kubectl api-resources | grep -q applications; then
+                kubectl get applications -n "$NAMESPACE" --ignore-not-found --output name | xargs --no-run-if-empty kubectl delete -n "$NAMESPACE" --wait
+                echo -n "."
+                while [ "$(kubectl get applications -n "$NAMESPACE" --ignore-not-found --output name | wc -l)" != "0" ]; do
+                  echo "_"
+                  sleep 2
+                done
+              fi
+              echo "OK"
+
+              echo -n "* Removing namespace: "
+              kubectl delete namespace "$NAMESPACE" --ignore-not-found --wait
+              echo "OK"
+              
+              echo
+              echo "Uninstall successful"
       restartPolicy: Never
       serviceAccountName: helm-manager
