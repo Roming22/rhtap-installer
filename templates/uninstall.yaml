@@ -1,0 +1,41 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{index .Values "trusted-application-pipeline" "name"}}-{{.Release.Name}}-uninstall"
+  labels:
+    app.kubernetes.io/managed-by: {{.Release.Service | quote}}
+    app.kubernetes.io/instance: {{.Release.Name | quote}}
+    app.kubernetes.io/version: {{.Chart.AppVersion}}
+    helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+  annotations:
+    "helm.sh/hook": pre-delete
+spec:
+  template:
+    metadata:
+      name: "{{.Release.Name}}-uninstall"
+      labels:
+        app.kubernetes.io/managed-by: {{.Release.Service | quote}}
+        app.kubernetes.io/instance: {{.Release.Name | quote}}
+        helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+    spec:
+      containers:
+        - name: debug-container
+          image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
+          workingDir: /tmp
+          command:
+            - /bin/bash
+            - -c
+            - |
+              DURATION=120
+              FLAG="$PWD/.keep_alive"
+              echo "The container will shutdown in $DURATION seconds."
+              echo "Delete '$FLAG' to force the shutdown."
+              touch "$FLAG"
+              { sleep $DURATION; rm "$FLAG"; } &
+              while [ -e "$FLAG" ]; do
+                sleep 5
+              done
+              echo "Container shutting down"
+      restartPolicy: Never
+      serviceAccountName: helm-manager
