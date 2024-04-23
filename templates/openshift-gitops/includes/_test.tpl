@@ -1,4 +1,5 @@
-{{ define "rhtap.gitops.test" }}
+{{define "rhtap.gitops.test"}}
+{{if and (index .Values "openshift-gitops") (eq (index .Values "openshift-gitops" "enabled") true)}}
 - name: test-gitops
   image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
   workingDir: /tmp
@@ -108,4 +109,5 @@
     requests:
       cpu: 20m
       memory: 128Mi
-{{ end }}
+{{end}}
+{{end}}

@@ -1,5 +1,5 @@
 {{ define "rhtap.developer-hub.configure" }}
-{{ if (index .Values "developer-hub") }}
+{{if and (index .Values "developer-hub") (eq (index .Values "developer-hub" "enabled") true)}}
 - name: configure-developer-hub
   image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
   workingDir: /tmp
@@ -66,7 +66,7 @@
       yq --inplace '. *= load("rhtap-values.yaml")' "${HELM_VALUES}"
       echo -n "."
       KUBERNETES_CLUSTER_FQDN="$(
-        kubectl get routes -n openshift-pipelines pipelines-as-code-controller -o jsonpath='{.spec.host}' | \
+        kubectl get routes -n openshift-console console -o jsonpath='{.spec.host}' | \
         cut -d. -f 2-
       )"
       export KUBERNETES_CLUSTER_FQDN

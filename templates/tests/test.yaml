@@ -23,8 +23,9 @@ spec:
     spec:
       automountServiceAccountToken: true
       containers:
-        {{include "rhtap.namespace.test" . | indent 8}}
+        {{include "rhtap.developer-hub.test" . | indent 8}}
         {{include "rhtap.gitops.test" . | indent 8}}
+        {{include "rhtap.namespace.test" . | indent 8}}
         {{include "rhtap.pipelines.test" . | indent 8}}
         {{include "rhtap.trusted-artifact-signer.test" . | indent 8}}
         {{include "rhtap.trusted-profile-analyzer.test" . | indent 8}}
