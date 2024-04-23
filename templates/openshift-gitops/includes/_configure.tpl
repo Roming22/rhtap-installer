@@ -1,4 +1,5 @@
-{{ define "rhtap.gitops.configure" }}
+{{define "rhtap.gitops.configure"}}
+{{if and (index .Values "openshift-gitops") (eq (index .Values "openshift-gitops" "enabled") true)}}
 - name: configure-gitops
   image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
   workingDir: /tmp
@@ -9,9 +10,9 @@
       set -o errexit
       set -o nounset
       set -o pipefail
-    {{ if eq .Values.debug.script true }}
+    {{if eq .Values.debug.script true}}
       set -x
-    {{ end }}
+    {{end}}
 
       echo -n "* Installing 'argocd' CLI: "
       curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
@@ -95,4 +96,5 @@
 
       echo
       echo "Configuration successful"
-{{ end }}
+{{end}}
+{{end}}

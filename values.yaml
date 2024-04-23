@@ -31,6 +31,7 @@ acs:
   central-endpoint: ${ACS__CENTRAL_ENDPOINT}
   api-token: ${ACS__API_TOKEN}
 developer-hub:
+  enabled: true
   app-config:
     techdocs:
       builder: 'local'

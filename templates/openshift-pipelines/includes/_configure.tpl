@@ -1,4 +1,5 @@
 {{ define "rhtap.pipelines.configure" }}
+{{if and (index .Values "openshift-pipelines") (eq (index .Values "openshift-pipelines" "enabled") true)}}
 - name: configure-pipelines
   image: quay.io/redhat-appstudio/appstudio-utils:dbbdd82734232e6289e8fbae5b4c858481a7c057
   workingDir: /tmp
@@ -95,4 +96,5 @@
 
       echo
       echo "Configuration successful"
-{{ end }}
+{{end}}
+{{end}}

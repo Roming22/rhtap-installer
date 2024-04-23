@@ -1,4 +1,5 @@
-{{ define "rhtap.namespace.configure" }}
+{{define "rhtap.namespace.configure"}}
+{{if and (index .Values "openshift-pipelines") (eq (index .Values "openshift-pipelines" "enabled") true)}}
 - name: configure-namespace
   image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
   workingDir: /tmp
@@ -46,4 +47,5 @@
 
       echo
       echo "Configuration successful"
-{{ end }}
+{{end}}
+{{end}}

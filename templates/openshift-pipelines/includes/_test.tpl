@@ -1,4 +1,5 @@
 {{ define "rhtap.pipelines.test" }}
+{{if and (index .Values "openshift-pipelines") (eq (index .Values "openshift-pipelines" "enabled") true)}}
 - name: test-pipelines
   image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
   workingDir: /tmp
@@ -60,4 +61,5 @@
     requests:
       cpu: 20m
       memory: 128Mi
-{{ end }}
+{{end}}
+{{end}}

@@ -1,5 +1,5 @@
 {{ define "rhtap.developer-hub.configure" }}
-{{ if (index .Values "developer-hub") }}
+{{if and (index .Values "developer-hub") (eq (index .Values "developer-hub" "enabled") true)}}
 - name: configure-developer-hub
   image: "registry.redhat.io/openshift4/ose-tools-rhel8:latest"
   workingDir: /tmp
@@ -43,17 +43,24 @@
     {{ end }}
 
       # ArgoCD integration
-      while [ "$(kubectl get secret "$CHART-argocd-secret" --ignore-not-found -o name | wc -l)" != "1" ]; do
-        echo -ne "_"
-        sleep 2
-      done
-      kubectl get secret "$CHART-argocd-secret" -o yaml > argocd_secret.yaml
-      echo -n "."
+      if kubectl get namespace "openshift-gitops" >/dev/null 2>/dev/null; then
+        while [ "$(kubectl get secret "$CHART-argocd-secret" --ignore-not-found -o name | wc -l)" != "1" ]; do
+          echo -ne "_"
+          sleep 2
+        done
+        kubectl get secret "$CHART-argocd-secret" -o yaml > argocd_secret.yaml
+        echo -n "."
 
-      ARGOCD_API_TOKEN="$(yq '.data.api-token | @base64d' argocd_secret.yaml)"
-      ARGOCD_HOSTNAME="$(yq '.data.hostname | @base64d' argocd_secret.yaml)"
-      ARGOCD_PASSWORD="$(yq '.data.password | @base64d' argocd_secret.yaml)"
-      ARGOCD_USER="$(yq '.data.user | @base64d' argocd_secret.yaml)"
+        ARGOCD_API_TOKEN="$(yq '.data.api-token | @base64d' argocd_secret.yaml)"
+        ARGOCD_HOSTNAME="$(yq '.data.hostname | @base64d' argocd_secret.yaml)"
+        ARGOCD_PASSWORD="$(yq '.data.password | @base64d' argocd_secret.yaml)"
+        ARGOCD_USER="$(yq '.data.user | @base64d' argocd_secret.yaml)"
+      else
+        ARGOCD_API_TOKEN="unset"
+        ARGOCD_HOSTNAME="https://unset.unset"
+        ARGOCD_PASSWORD="unset"
+        ARGOCD_USER="unset"
+      fi
       cat << _EOF_ >> "$APPCONFIGEXTRA"
       argocd:
         username: $ARGOCD_USER
@@ -68,11 +75,15 @@
       _EOF_
 
       # Tekton integration
-      while [ "$(kubectl get secret "$CHART-pipelines-secret" --ignore-not-found -o name | wc -l)" != "1" ]; do
-        echo -ne "_"
-        sleep 2
-      done
-      PIPELINES_PAC_URL="$(kubectl get secret "$CHART-pipelines-secret" -o yaml | yq '.data.webhook-url | @base64d')"
+      if kubectl get namespace "openshift-pipelines" >/dev/null 2>/dev/null; then
+        while [ "$(kubectl get secret "$CHART-pipelines-secret" --ignore-not-found -o name | wc -l)" != "1" ]; do
+          echo -ne "_"
+          sleep 2
+        done
+        PIPELINES_PAC_URL="$(kubectl get secret "$CHART-pipelines-secret" -o yaml | yq '.data.webhook-url | @base64d')"
+      else
+        PIPELINES_PAC_URL="https://unset.unset"
+      fi
       yq -i ".integrations.github[0].apps[0].webhookUrl = \"$PIPELINES_PAC_URL\"" "$APPCONFIGEXTRA"
       echo "OK"
 
@@ -88,7 +99,7 @@
     {{ end }}
       echo -n "."
       KUBERNETES_CLUSTER_FQDN="$(
-        kubectl get routes -n openshift-pipelines pipelines-as-code-controller -o jsonpath='{.spec.host}' | \
+        kubectl get routes -n openshift-console console -o jsonpath='{.spec.host}' | \
         cut -d. -f 2-
       )"
       export KUBERNETES_CLUSTER_FQDN
