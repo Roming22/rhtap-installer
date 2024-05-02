@@ -53,6 +53,21 @@ subjects:
     name: helm-manager
     namespace: rhtap
 ---
+# Source: redhat-trusted-application-pipeline/templates/developer-hub/subscription.yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  annotations:
+    helm.sh/resource-policy: keep
+  name: rhdh
+  namespace: openshift-operators
+spec:
+  channel: fast-1.1
+  installPlanApproval: Automatic
+  name: rhdh
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+---
 # Source: redhat-trusted-application-pipeline/templates/openshift-gitops/subscription.yaml
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
@@ -147,12 +162,6 @@ spec:
         
               echo -n "Installing utils: "
               dnf install -y diffutils > /dev/null 2>/dev/null
-              echo -n "."
-        
-              # Installing Helm...
-              curl --fail --silent --show-error --location \
-                https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
-                  | bash >/dev/null
               echo "OK"
         
               YQ_VERSION="v4.40.5"
@@ -229,6 +238,13 @@ spec:
                 sleep 2
               done
               PIPELINES_PAC_URL="$(kubectl get secret "$CHART-pipelines-secret" -o yaml | yq '.data.webhook-url | @base64d')"
+              yq -i ".integrations.github[0].apps[0].webhookUrl = \"$PIPELINES_PAC_URL\"" "$APPCONFIGEXTRA"
+              echo "OK"
+        
+              kubectl create configmap redhat-developer-hub-app-config-extra \
+                --from-file=app-config.extra.yaml="$APPCONFIGEXTRA" \
+                -o yaml \
+                --dry-run=client | kubectl apply -f - >/dev/null
               echo "OK"
         
               echo -n "* Generating redhat-developer-hub-rhtap-config secret: "
@@ -260,249 +276,50 @@ spec:
               EOF
               echo "OK"
         
-              echo -n "* Generating values.yaml: "
-              helm repo add developer-hub https://raw.githubusercontent.com/rhdh-bot/openshift-helm-charts/rhdh-1.1-rhel-9/installation >/dev/null
-              echo -n "."
-              HELM_VALUES="/tmp/developer-hub-values.yaml"
-              helm show values --devel developer-hub/redhat-developer-hub >"${HELM_VALUES}"
-        
-              cat <<EOF > rhtap-values.yaml
-              
-              proxy:
-                '/quay/api':
-                  target: 'https://quay.io'
-                  headers:
-                    X-Requested-With: 'XMLHttpRequest'
-                    # Uncomment the following line to access a private Quay Repository using a token
-                    # Authorization: 'Bearer QUAY_TOKEN'
-                  changeOrigin: true
-                  # Change to "false" in case of using self hosted quay instance with a self-signed certificate
-                  secure: true
-              quay:
-                # The UI url for Quay, used to generate the link to Quay
-                uiUrl: 'https://quay.io'
-              upstream:
-                backstage:
-                  extraAppConfig:
-                    - configMapRef: redhat-developer-hub-app-config-extra
-                      filename: app-config.extra.yaml
-                  extraEnvVarsSecrets:
-                    - redhat-developer-hub-rhtap-config
-              global:
-                dynamic:
-                  includes:
-                    - dynamic-plugins.default.yaml
-                  plugins:
-                    # Installed plugins can be listed at:
-                    # https://DH_HOSTNAME/api/dynamic-plugins-info/loaded-plugins
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/roadiehq-backstage-plugin-argo-cd
-                      pluginConfig:
-                        dynamicPlugins:
-                          frontend:
-                            roadiehq.backstage-plugin-argo-cd:
-                              mountPoints:
-                                - config:
-                                    if:
-                                      allOf:
-                                        - isArgocdAvailable
-                                    layout:
-                                      gridColumnEnd:
-                                        lg: span 8
-                                        xs: span 12
-                                  importName: EntityArgoCDOverviewCard
-                                  mountPoint: entity.page.overview/cards
-                                - config:
-                                    if:
-                                      allOf:
-                                        - isArgocdAvailable
-                                    layout:
-                                      gridColumn: 1 / -1
-                                  importName: EntityArgoCDHistoryCard
-                                  mountPoint: entity.page.cd/cards
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/roadiehq-backstage-plugin-argo-cd-backend-dynamic
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/roadiehq-scaffolder-backend-argocd-dynamic
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/backstage-plugin-techdocs
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/backstage-plugin-kubernetes
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic
-                      pluginConfig:
-                        kubernetes:
-                          clusterLocatorMethods:
-                            - clusters:
-                                - authProvider: serviceAccount
-                                  name: rhdh-kubernetes-plugin
-                                  serviceAccountToken: <token>
-                                  skipTLSVerify: true
-                                  url: https://kubernetes.default.svc
-                              type: config
-                          customResources:
-                            - apiVersion: v1
-                              group: route.openshift.io
-                              plural: routes
-                            - apiVersion: v1
-                              group: tekton.dev
-                              plural: pipelineruns
-                            - apiVersion: v1
-                              group: tekton.dev
-                              plural: taskruns
-                          serviceLocatorMethod:
-                            type: multiTenant
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/janus-idp-backstage-plugin-quay
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/janus-idp-backstage-plugin-tekton
-                      pluginConfig:
-                        dynamicPlugins:
-                          frontend:
-                            janus-idp.backstage-plugin-tekton:
-                              mountPoints:
-                                - config:
-                                    if:
-                                      allOf:
-                                        - isTektonCIAvailable
-                                    layout:
-                                      gridColumn: 1 / -1
-                                      gridRowStart: 1
-                                  importName: TektonCI
-                                  mountPoint: entity.page.ci/cards
-                    - disabled: false
-                      package: ./dynamic-plugins/dist/janus-idp-backstage-plugin-topology
-              
-              EOF
-              yq --inplace '. *= load("rhtap-values.yaml")' "${HELM_VALUES}"
-              echo -n "."
-              KUBERNETES_CLUSTER_FQDN="$(
-                kubectl get routes -n openshift-console console -o jsonpath='{.spec.host}' | \
-                cut -d. -f 2-
-              )"
-              export KUBERNETES_CLUSTER_FQDN
-              yq --inplace '.global.clusterRouterBase = strenv(KUBERNETES_CLUSTER_FQDN)' "$HELM_VALUES"
-              echo -n "."
-        
-              
-              ################################################################################
-              # Configure TLS
-              ################################################################################
-              # Add env var.
-              yq --inplace '
-                  .upstream.backstage.extraEnvVars += [
-                      {
-                          "name": "NODE_EXTRA_CA_CERTS",
-                          "value": "/ingress-cert/ca.crt"
-                      }
-                  ]
-              ' "$HELM_VALUES"
-              echo -n "."
-              
-              # Add volume
-              yq --inplace '
-                  .upstream.backstage.extraVolumes += [
-                      {
-                          "name": "kube-root-ca",
-                          "configMap": {
-                              "name": "kube-root-ca.crt",
-                              "defaultMode": 420
-                          }
-                      }
-                  ]
-              ' "$HELM_VALUES"
-              echo -n "."
-              
-              # Add volume mount
-              yq --inplace '
-                  .upstream.backstage.extraVolumeMounts += [
-                      {
-                          "name": "kube-root-ca",
-                          "mountPath": "/ingress-cert"
-                      }
-                  ] 
-              ' "$HELM_VALUES"
-              echo -n "."
-              ################################################################################
-              
-              
-              ################################################################################
-              # ArgoCD integration
-              ################################################################################
-              ARGOCD_SECRET="$CHART-argocd-secret"
-              export ARGOCD_SECRET
-              
-              while [ "$(kubectl get secret "$ARGOCD_SECRET" --ignore-not-found -o name | wc -l)" != "1" ]; do
-                echo -ne "_"
-                sleep 2
-              done
-              echo -n "."
-              
-              cat << EOF >> "$APPCONFIGEXTRA"
-              argocd:
-                username: \${ARGOCD_USER}
-                password: \${ARGOCD_PASSWORD}
-                waitCycles: 25
-                appLocatorMethods:
-                  - type: 'config'
-                    instances:
-                      - name: default
-                        url: https://\${ARGOCD_HOSTNAME}
-                        token: \${ARGOCD_API_TOKEN}
-              EOF
-              
-              yq --inplace '.upstream.backstage.extraEnvVarsSecrets += strenv(ARGOCD_SECRET)' developer-hub-values.yaml
-              ################################################################################
-              
-              
-              ################################################################################
-              # Kubernetes/Tekton plugin configuration
-              ################################################################################
-              export K8S_SA_TOKEN=$(
-                SECRET_NAME=$(kubectl get secrets --namespace "$NAMESPACE" -o name | grep rhdh-kubernetes-plugin-token- | cut -d/ -f2 | head -1)
-                kubectl get secret --namespace "$NAMESPACE" "$SECRET_NAME" -o jsonpath={.data.token} | base64 -d
-              )
-              yq -i '
-                (
-                  (
-                    (.global.dynamic.plugins[] | select(.package == "./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic")) |
-                    .pluginConfig.kubernetes.clusterLocatorMethods[].clusters[]
-                  ) |
-                  select(.name == "rhdh-kubernetes-plugin") |
-                  .serviceAccountToken
-                ) = strenv(K8S_SA_TOKEN)
-              ' "$HELM_VALUES"
-              echo -n "."
-              ################################################################################
-              
-              echo "OK"
-        
-              echo -n "* Installing Developer Hub: "
-              kubectl create configmap redhat-developer-hub-app-config-extra \
-                --from-file=app-config.extra.yaml="$APPCONFIGEXTRA" \
-                -o yaml \
-                --dry-run=client | kubectl apply -f - >/dev/null
-              echo -n "."
-              if ! helm upgrade \
-                --install \
-                --devel \
-                --namespace=${NAMESPACE} \
-                --values="$HELM_VALUES" \
-                redhat-developer-hub \
-                developer-hub/redhat-developer-hub >/dev/null; then
-                echo "ERROR while installing chart!"
-                exit 1
-              fi
-              echo "OK"
-        
-              echo -n "* Waiting for route: "
-              until kubectl get route "redhat-developer-hub" -o name >/dev/null ; do
+              CRD="backstages"
+              echo -n "* Waiting for '$CRD' CRD: "
+              while [ $(kubectl api-resources | grep -c "^$CRD ") = "0" ] ; do
                 echo -n "."
                 sleep 3
               done
-              HOSTNAME="$(kubectl get routes "redhat-developer-hub" -o jsonpath="{.spec.host}")"
+              echo "OK"
+        
+              echo -n "* Creating Backstage instance for RHTAP: "
+              cat <<EOF | kubectl apply -f - >/dev/null
+              
+              ---
+              apiVersion: rhdh.redhat.com/v1alpha1
+              kind: Backstage
+              metadata:
+                name: developer-hub
+                namespace: rhtap
+              spec:
+                application:
+                  appConfig:
+                    mountPath: /opt/app-root/src
+                  extraFiles:
+                    mountPath: /opt/app-root/src
+                  replicas: 1
+                  route:
+                    enabled: true
+                database:
+                  enableLocalDb: true
+              
+              EOF
+              echo "OK"
+        
+              echo -n "* Waiting for route: "
+              HOSTNAME=""
+              while [ -z "$HOSTNAME" ]; do
+                HOSTNAME="$(kubectl get routes "backstage-developer-hub" -o jsonpath="{.spec.host}" 2>/dev/null || echo "FAIL")"
+                case "$HOSTNAME" in
+                  "FAIL")
+                    echo -n "_"
+                    sleep 3
+                    ;;
+                  *) ;;
+                esac
+              done
               echo -n "."
               if [ "$(kubectl get secret "$CHART-developer-hub-secret" -o name --ignore-not-found | wc -l)" = "0" ]; then
                 kubectl create secret generic "$CHART-developer-hub-secret" \
@@ -1717,7 +1534,7 @@ spec:
               EXIT_CODE=0
         
               echo -n "* UI: "
-              HOSTNAME="$(kubectl get routes "redhat-developer-hub" -o jsonpath="{.spec.host}")"
+              HOSTNAME="$(kubectl get routes "backstage-developer-hub" -o jsonpath="{.spec.host}")"
               if ! curl --fail --insecure --location --output /dev/null --silent "https://$HOSTNAME"; then
                 echo "FAIL"
                 EXIT_CODE=1

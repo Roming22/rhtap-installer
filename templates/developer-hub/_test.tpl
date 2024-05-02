@@ -16,7 +16,7 @@
       EXIT_CODE=0
 
       echo -n "* UI: "
-      HOSTNAME="$(kubectl get routes "redhat-developer-hub" -o jsonpath="{.spec.host}")"
+      HOSTNAME="$(kubectl get routes "backstage-developer-hub" -o jsonpath="{.spec.host}")"
       if ! curl --fail --insecure --location --output /dev/null --silent "https://$HOSTNAME"; then
         echo "FAIL"
         EXIT_CODE=1
