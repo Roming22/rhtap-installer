@@ -53,7 +53,7 @@ pipelines:
     github:
       application-id: ${GITHUB__APP__ID}
       private-key: ${GITHUB__APP__PRIVATE_KEY}
-      webhook-secret: ${GITHUB__APP__WEBHOOK__SECRET}
+    webhook-secret: ${GITHUB__APP__WEBHOOK__SECRET}
 quay:
   # Authentication information to push images.
   dockerconfigjson: |-

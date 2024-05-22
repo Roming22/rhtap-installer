@@ -9,24 +9,23 @@ spec:
   description: >-
     Create the required resources for {{.Chart.Name}} tasks to run in a namespace.
   params:
-    - default: {{index .Values "openshift-gitops" "git-token" | replace "$" "\\$"}}
+    {{- $github_token := ""}}
+    {{- if index .Values "openshift-gitops" "git-token"}}
+    {{- $github_token = (index .Values "openshift-gitops" "git-token" | replace "$" "\\$")}}
+    {{- end}}
+    - default: {{$github_token}}
       description: |
-        Git token
-      name: git_token
+        GitHub token
+      name: github_token
       type: string
     {{$gitlab_token := ""}}
     {{if .Values.git.gitlab}}
-    {{$gitlab_token = (.Values.git.gitlab.token | replace "$" "\\$")}}
+    {{$gitlab_token = (.Values.git.gitlab.token)}}
     {{end}}
-    - default: "{{$gitlab_token}}"
+    - default: "{{$gitlab_token | replace "$" "\\$"}}"
       description: |
         GitLab Personal Access Token
       name: gitlab_token
-      type: string
-    - default: "{{index .Values "pipelines" "pipelines-as-code" "github" "webhook-secret" | replace "$" "\\$"}}"
-      description: |
-        Pipelines as Code webhook secret
-      name: pipelines_webhook_secret
       type: string
     - default: {{index .Values "quay" "dockerconfigjson" | replace "$" "\\$"}}
       description: |
@@ -46,12 +45,10 @@ spec:
       type: string
   steps:
     - env:
-      - name: GIT_TOKEN
-        value: \$(params.git_token)
+      - name: GITHUB_TOKEN
+        value: \$(params.github_token)
       - name: GITLAB_TOKEN
         value: \$(params.gitlab_token)
-      - name: PIPELINES_WEBHOOK_SECRET
-        value: \$(params.pipelines_webhook_secret)
       - name: QUAY_DOCKERCONFIGJSON
         value: \$(params.quay_dockerconfigjson)
       - name: ROX_API_TOKEN
@@ -102,21 +99,11 @@ spec:
         fi
 
         SECRET_NAME="gitops-auth-secret"
-        if [ -n "\$GIT_TOKEN" ]; then
+        if [ -n "\$GITHUB_TOKEN" ]; then
           echo -n "* \$SECRET_NAME secret: "
           kubectl create secret generic "\$SECRET_NAME" \
-            --from-literal=password=\$GIT_TOKEN \
+            --from-literal=password=\$GITHUB_TOKEN \
             --type=kubernetes.io/basic-auth \
-            --dry-run=client -o yaml | kubectl apply --filename - --overwrite=true >/dev/null
-          kubectl annotate secret "\$SECRET_NAME" "helm.sh/chart={{.Chart.Name}}-{{.Chart.Version}}" >/dev/null
-          echo "OK"
-        fi
-
-        SECRET_NAME="pipelines-secret"
-        if [ -n "\$PIPELINES_WEBHOOK_SECRET" ]; then
-          echo -n "* \$SECRET_NAME secret: "
-          kubectl create secret generic "\$SECRET_NAME" \
-            --from-literal=webhook.secret=\$PIPELINES_WEBHOOK_SECRET \
             --dry-run=client -o yaml | kubectl apply --filename - --overwrite=true >/dev/null
           kubectl annotate secret "\$SECRET_NAME" "helm.sh/chart={{.Chart.Name}}-{{.Chart.Version}}" >/dev/null
           echo "OK"
